@@ -76,6 +76,7 @@ module PgHeroLogs
       puts "\nFull Queries\n\n"
       queries.each_with_index do |(query, info), i|
         puts "#{i + 1}."
+        # To get unique queries that we care about: uniq{|k| PgQuery.parse(k).simple_where_conditions}
         info[:samples].each{|sample| puts "#{sample}\n"}
         puts ""
       end
@@ -97,7 +98,7 @@ module PgHeroLogs
     end
 
     def queries
-      @queries ||= Hash.new {|hash, key| hash[key] = {count: 0, total_time: 0, samples: Array.new} }
+      @queries ||= Hash.new {|hash, key| hash[key] = {count: 0, total_time: 0, samples: Set.new} }
     end
 
     def squish(str)
