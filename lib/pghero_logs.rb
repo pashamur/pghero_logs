@@ -4,7 +4,7 @@ require "aws-sdk"
 
 module PgHeroLogs
   class << self
-    REGEX = /duration: (\d+\.\d+) ms  execute <unnamed>: (.+)?/i
+    REGEX = /duration: (\d+\.\d+) ms  execute <unnamed>: ([\s\S]+)?\Z/i
 
     def run(command)
       case command
@@ -57,6 +57,9 @@ module PgHeroLogs
           end
           active_entry = ""
         end
+        if match = line.match(/(.*)--.*$/) # Remove single line comment
+          line = match[1]
+        end
         active_entry << line
       end
       parse_entry(active_entry)
@@ -72,18 +75,21 @@ module PgHeroLogs
 
       puts "\nFull Queries\n\n"
       queries.each_with_index do |(query, info), i|
-        puts "#{i + 1}. #{info[:sample]}"
-        puts
+        puts "#{i + 1}."
+        info[:samples].each{|sample| puts "#{sample}\n"}
+        puts ""
       end
     end
 
     def parse_entry(active_entry)
       if (matches = active_entry.match(REGEX))
+        # Filter out postgres / rails default queries
+        return if active_entry =~ /pg_attribute|pg_type|schema_migrations|pg_class|pg_namespace/
         begin
           query = PgQuery.normalize(squish(matches[2].gsub(/\/\*.+/, ""))).gsub(/\?(, \?)+/, "?")
           queries[query][:count] += 1
           queries[query][:total_time] += matches[1].to_f
-          queries[query][:sample] = squish(matches[2])
+          queries[query][:samples] << squish(matches[2])
         rescue PgQuery::ParseError
           # do nothing
         end
@@ -91,7 +97,7 @@ module PgHeroLogs
     end
 
     def queries
-      @queries ||= Hash.new {|hash, key| hash[key] = {count: 0, total_time: 0} }
+      @queries ||= Hash.new {|hash, key| hash[key] = {count: 0, total_time: 0, samples: Array.new} }
     end
 
     def squish(str)
